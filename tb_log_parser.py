@@ -86,10 +86,12 @@ class JobMonitor():
 
         self.writer.add_scalar("train/speed[words per sec]", speed, up, wall_time)
 
-        _, _lr, lr = rest
+        # lr is optional
+        if rest:
+            _, _lr, lr = rest
+            lr = float(lr)
+            self.writer.add_scalar("train/learning_rate", lr, up, wall_time)
 
-        lr = float(lr)
-        self.writer.add_scalar("train/learning_rate", lr, up, wall_time)
         self.writer.add_scalar("train/gpus", self.gpus, up, wall_time)
 
         return up
@@ -98,6 +100,11 @@ class JobMonitor():
         strdate, strtime, *_ = line.split()
         wall_time = get_wall_time(strdate[1:], strtime[:-1])
         wall_time = self.wall_time_minus_gaps(wall_time)
+
+        # do not parse lines like
+        # [2021-04-16 22:29:19] [valid] [valid] First sentence\'s tokens as scored:
+        if line.find('Ep.') == -1 and line.find('Up.') == -1:
+            return
 
         _, _, _, _ep, ep, _, _up, up, _, metric, _, value, _, _stalled, x, *_times = line.split()
         up = int(up)
