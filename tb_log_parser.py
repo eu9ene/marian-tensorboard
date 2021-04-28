@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import click
 import tensorboardX as tb
 import sys
 import time
@@ -13,12 +13,13 @@ def get_wall_time(date_str, time_str):
 
 class JobMonitor():
 
-    def __init__(self, job_path):
+    def __init__(self, job_path, prefix):
 
         self.job_path = job_path
         self.tb_logdir = job_path + "/tb"
 
-        self.train_log = job_path + "/model/train.log"
+        self.train_log = os.path.join(job_path, prefix, "train.log")
+        self.prefix = prefix
         self.last_update_time = 0
         self.last_update_line = -1
         self.gpus = 0
@@ -170,13 +171,13 @@ class JobMonitor():
     # This assumes some files like "avg-8.log" exist in model directory. If not, this does nothing.
     def update_all_avg(self):
 
-        for fn in os.listdir(self.job_path+"/model"):
+        for fn in os.listdir(os.path.join(self.job_path, self.prefix)):
             if not fn.startswith("avg-"): continue
             if not fn.endswith(".log"): continue
 
             name = fn.replace(".log","")
 
-            with open(self.job_path+"/model/"+fn) as f:
+            with open(os.path.join(self.job_path, self.prefix, fn)) as f:
                 if name not in self.avg_status:
                     self.avg_status[name] = -1
                 for line in f:
@@ -194,35 +195,41 @@ class JobMonitor():
                     self.avg_status[name] = step
 
 
+@click.command()
+@click.option('--prefix',
+              default='model')
+def run(prefix):
+    monitors = {}
+
+    while True:
+        with open("tb-monitored-jobs", "r") as f:
+            monitored = set()
+            # create new monitors
+            for line in f:
+                line = line.strip()
+                if line not in monitors:
+                    path = os.path.join(line, prefix, "train.log")
+                    if os.path.exists(path):
+                        m = JobMonitor(line, prefix)
+                        monitors[line] = m
+                    else:
+                        print("path %s does not exist, skipping" % (path))
+
+                monitored.add(line)
+            # delete unregistered monitors
+            for k in list(monitors.keys()):
+                if k not in monitored:
+                    del monitors[k]
+
+        # update all monitors
+        for j, m in monitors.items():
+            print("update loop", j)
+            m.update_loop()
+
+        #    break
+        time.sleep(5)
 
 
-
-monitors = {}
-
-while True:
-    with open("tb-monitored-jobs","r") as f:
-        monitored = set()
-        # create new monitors
-        for line in f:
-            line = line.strip()
-            if line not in monitors:
-                if os.path.exists(line+"/model/train.log"):
-                    m = JobMonitor(line)
-                    monitors[line] = m
-                else:
-                    print("path %s does not exist, skipping" % (line+"/model/train.log"))
-
-            monitored.add(line)
-        # delete unregistered monitors
-        for k in list(monitors.keys()):
-            if k not in monitored:
-                del monitors[k]
-
-    # update all monitors
-    for j,m in monitors.items():
-        print("update loop", j)
-        m.update_loop()
-
-#    break
-    time.sleep(5)
+if __name__ == '__main__':
+    run()
 
